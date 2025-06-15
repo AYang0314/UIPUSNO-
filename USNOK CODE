@@ -1,0 +1,95 @@
+setwd("C:/Users/yuxu0/OneDrive/Documents/UIP Project May 2025")
+
+
+# Load required libraries
+library(readxl)
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+
+# -------------------------------------------------------
+# 1. Read exchange rate data (USD to NOK)
+# -------------------------------------------------------
+print("Reading exchange rate data...")
+FX_NOR_USA <- read_excel("DEXNOUS.xlsx", sheet = "Monthly", skip = 10)
+colnames(FX_NOR_USA)[1:2] <- c("Date", "FX")
+FX_NOR_USA$Date <- as.Date(FX_NOR_USA$Date)
+print("FX data preview:")
+print(head(FX_NOR_USA))
+
+# -------------------------------------------------------
+# 2. Read interest rate data
+# -------------------------------------------------------
+print("Reading U.S. interest rate data...")
+IR_USA <- read_excel("IRLTLT01USM156N (1).xlsx", sheet = "Monthly", skip = 10)
+colnames(IR_USA)[1:2] <- c("Date", "Rate_USA")
+IR_USA$Date <- as.Date(IR_USA$Date)
+print(head(IR_USA))
+
+print("Reading Norway interest rate data...")
+IR_NOR <- read_excel("IRLTLT01NOM156N.xlsx", sheet = "Monthly", skip = 10)
+colnames(IR_NOR)[1:2] <- c("Date", "Rate_NOR")
+IR_NOR$Date <- as.Date(IR_NOR$Date)
+print(head(IR_NOR))
+
+# -------------------------------------------------------
+# 3. Merge data
+# -------------------------------------------------------
+print("Merging interest rates...")
+data_USA_NOR <- merge(IR_USA, IR_NOR, by = "Date")
+print(head(data_USA_NOR))
+
+print("Merging exchange rates with interest rate data...")
+data_USA_NOR <- merge(data_USA_NOR, FX_NOR_USA, by = "Date")
+print(head(data_USA_NOR))
+
+print("Filtering by date range...")
+data_USA_NOR <- data_USA_NOR %>%
+  filter(Date >= as.Date("1985-01-01") & Date <= as.Date("2025-02-01"))
+
+# -------------------------------------------------------
+# 4. Create variables for UIP
+# -------------------------------------------------------
+print("Creating interest rate differential and FX change...")
+data_USA_NOR <- data_USA_NOR %>%
+  mutate(
+    dif_IR = Rate_NOR - Rate_USA,
+    d_fx = (lead(FX, 12) / FX - 1) * 100
+  )
+print(head(data_USA_NOR))
+
+print("Cleaning data...")
+data_clean <- data_USA_NOR %>%
+  filter(!is.na(d_fx) & !is.na(dif_IR))
+print(paste("Rows after cleaning:", nrow(data_clean)))
+
+# -------------------------------------------------------
+# 5. Plotting
+# -------------------------------------------------------
+print("Generating plots...")
+
+ggplot(data = data_clean, aes(x = Date, y = FX)) +
+  geom_line(color = "#00AFBB", size = 1) +
+  ggtitle("USD to NOK Exchange Rate")
+
+ggplot(data = data_clean, aes(x = Date, y = d_fx)) +
+  geom_line(color = "#00AFBB", size = 1) +
+  ggtitle("12-Month % Change in USD/NOK")
+
+ggplot(data = data_clean, aes(x = Date, y = dif_IR)) +
+  geom_line(color = "#00AFBB", size = 1) +
+  ggtitle("Interest Rate Differential: Norway - US")
+
+# -------------------------------------------------------
+# 6. OLS Regression (UIP Test)
+# -------------------------------------------------------
+print("Running regression...")
+
+plot(y = data_clean$d_fx,
+     x = data_clean$dif_IR,
+     ylab = "% change in FX rate (USD/NOK)",
+     xlab = "Interest Rate Differential (Norway - US)",
+     main = "UIP Test: USD to NOK")
+
+ols_USA_NOR <- lm(d_fx ~ dif_IR, data = data_clean)
+summary(ols_USA_NOR)
